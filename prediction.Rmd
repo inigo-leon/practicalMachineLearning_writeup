@@ -1,0 +1,126 @@
+---
+title: "Exercise Prediction"
+author: "Iñigo León"
+date: "November  $23^{th},2014$"
+output: html_document
+---
+
+```{r general, echo=TRUE, warning=FALSE, message=FALSE}
+library(knitr)
+library(caret)
+## I set the seed to 314 for reproducibility
+set.seed(314)
+```
+
+## Summary
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+Our goal is be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+## Objective
+
+The goal of this project is to predict the manner in which the users did the exercise. This is the "classe" variable in the training set. We may use any of the other variables to predict with. For this first we had to choose the training and test sets, then we proceeded to clean the data, removing those variables that are not significant for the model or has missing values. After that we fitted a random forest model using the remaining variables. Finally we tested our model with the test set and measure how accurate our model is.
+
+## Building the Model
+
+### Data, training and testing set
+
+The first thing to do is read the data and divide it two sets, the training set and the test set. The test set is used to train the model that will fit the data, and the test set serves to measure the accuracy of the model. In this case we used 75% of the data in the training set, and 25% in the test set.
+
+```{r readData, echo=TRUE, cache=FALSE}
+data <- read.csv("pml-training.csv",na.strings=c("NA", NULL, "#DIV/0!", "", NA))
+
+inTrain <- createDataPartition(y=data$classe,p=0.75,list=FALSE)
+
+training <- data[inTrain,]
+testing <- data[-inTrain,]
+
+```
+
+### Cleaning data
+The next step is to clean the data, eliminating the variables that has no influence on the model. Obvously, I have to proccess training and testing set in the same way.
+
+
+First of all, I am going to remove all variables with only NA values.
+
+```{r removeNA, echo=TRUE}
+testing<-testing[, colSums(is.na(training))==0]
+training<-training[, colSums(is.na(training))==0]
+```
+
+The next step is to identificate the variables that are not relevant for the model by a "near zero variance" test.
+
+```{r removeNearZeroVariance,echo=TRUE}
+nzv <- nearZeroVar(training,saveMetrics=TRUE)
+training <- training[,!nzv$nzv]
+testing <- testing[,!nzv$nzv]
+```
+
+The next step to reduce the number of is was to reduce even more the number of variables, so we 
+Other columns that I have to delete are those that has no logical influence over the outcome. In this case I choose "X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2" and "cvtd_timestamp"
+
+```{r removeOther, echo=TRUE}
+training$X<-NULL
+training$user_name<-NULL
+training$raw_timestamp_part_1<-NULL
+training$raw_timestamp_part_2<-NULL
+training$cvtd_timestamp<-NULL
+
+testing$X<-NULL
+testing$user_name<-NULL
+testing$raw_timestamp_part_1<-NULL
+testing$raw_timestamp_part_2<-NULL
+testing$cvtd_timestamp<-NULL
+```
+
+
+I can delete even more variables by correlation. I am going to detect all the variables with a correlation > 0.8 and eliminate from de set of variables. Repeat until there is no varible in this set.
+
+```{r removeCorrelation, echo=TRUE}
+M <- abs(cor(training[,-ncol(training)]))
+diag(M) <- 0
+which(M > 0.8,arr.ind=T)
+```
+
+So we can delete those variables
+
+```{r removeCorrelation2, echo=TRUE}
+training <-training[,-c(4,5,9,10,11,12,14,20,25,27,32,34,35,37,46)]
+testing <- testing[,-c(4,5,9,10,11,12,14,20,25,27,32,34,35,37,46)]
+M <- abs(cor(training[,-ncol(training)]))
+diag(M) <- 0
+which(M > 0.8,arr.ind=T)
+```
+
+So we have now "only" 38 variables
+
+### Creating the model
+
+Once cleaned the data, I have chosen the Random Forest algorithm using principal components to create the model. 
+```{r createModel, echo=TRUE, warning=FALSE}
+modelFit <- train(training$classe ~ .,method="rf",preProcess="pca",data=training)
+```
+
+
+
+
+This is the model's details.
+
+```{r confusionMatrix, echo=TRUE}
+modelFit
+```
+
+I get an accuracy of 1.0 with a kappa of 1.0. This model seems to be good, but I have to prove it with the testing set.
+
+
+### Model evaluation
+
+The last step is to evaluate the model over the testing set.
+
+```{r modelEvaluation, echo=TRUE}
+prediction<-predict(modelFit, testing)
+confusionMatrix(prediction, reference = testing$classe)
+```
+
+As we can see, the accuracy anf the kappa values are more or less the same as in the training model, so I have a good model.
